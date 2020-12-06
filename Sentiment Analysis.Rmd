@@ -1,0 +1,350 @@
+---
+title: "NLP & Text Mining"
+author: "BBDS-Malathy(Added Superlearner prediction model)"
+date: "2/1/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Free memory Functions
+
+```{r}
+# Clear environment
+rm(list = ls()) 
+
+# Clear packages
+#pacman::p_unload(rgl)
+
+# Clear plots
+#dev.off()  # But only if there IS a plot
+
+# Clear console
+cat("\014")  # ctrl+L
+```
+
+
+#######################################################################################################
+### Importing the RestReviews_DF
+#######################################################################################################
+
+
+```{r}
+RestReviews_Org = read.delim(file.choose(), quote = '', stringsAsFactors = FALSE) # If we have tsv file 
+
+# RestReviews_Org <- readLines(file.choose())  # If we have text file
+```
+
+```{r}
+str(RestReviews_Org)
+```
+
+
+#######################################################################################################
+### Cleaning the texts
+#######################################################################################################
+
+# "Corpus" is a collection of text documents.
+
+# VCorpus in tm refers to "Volatile" corpus which means that the corpus is stored in memory and would 
+# be destroyed when the R object containing it is destroyed.
+
+# Contrast this with PCorpus or Permanent Corpus which are stored outside the memory say in a db.
+
+# In order to create a VCorpus using tm, we need to pass a "Source" object as a paramter to the VCorpus
+# method. 
+
+```{r}
+#install.packages('tm')
+#install.packages('SnowballC')
+
+library(tm)
+library(SnowballC)
+```
+
+
+
+
+# Find source available using VCorpus
+  
+# getSources()
+
+```{r}
+RestReviews_Corp = VCorpus(VectorSource(RestReviews_Org$Review))  # Create a Corpus 
+
+
+```
+
+
+```{r}
+RestReviews_Corp
+```
+
+```{r}
+as.character(RestReviews_Corp[[1]])  # Check the first record
+```
+
+
+# Convert the text to lower case
+```{r}
+RestReviews_Corp = tm_map(RestReviews_Corp, content_transformer(tolower))
+
+```
+
+```{r}
+as.character(RestReviews_Corp[[1]])  # Check the first record
+```
+
+
+# Remove numbers
+```{r}
+as.character(RestReviews_Corp[[841]])  # Check the first record
+
+RestReviews_Corp = tm_map(RestReviews_Corp, removeNumbers)
+
+as.character(RestReviews_Corp[[841]])  # Check the first record
+```
+
+
+
+# Remove punctuations
+```{r}
+as.character(RestReviews_Corp[[1]])  # Check the first record
+
+RestReviews_Corp = tm_map(RestReviews_Corp, removePunctuation)
+
+as.character(RestReviews_Corp[[1]])  # Check the first record
+```
+
+
+
+# Remove english common stopwords
+```{r}
+as.character(RestReviews_Corp[[1]])  # Check the first record
+
+RestReviews_Corp = tm_map(RestReviews_Corp, removeWords, stopwords("english")) # Install SnowballC  package
+
+as.character(RestReviews_Corp[[1]])  # Check the first record
+```
+
+
+
+# Remove your own stop word specify your stopwords as a character vector
+# RestReviews_Corp = tm_map(docs, removeWords, c("blabla1", "blabla2"))
+
+# Text stemming
+```{r}
+as.character(RestReviews_Corp[[1]])  # Check the first record
+
+RestReviews_Corp = tm_map(RestReviews_Corp, stemDocument)
+
+as.character(RestReviews_Corp[[1]])  # Check the first record
+```
+
+
+
+# Eliminate extra white spaces
+```{r}
+RestReviews_Corp = tm_map(RestReviews_Corp, stripWhitespace)
+
+as.character(RestReviews_Corp[[1]])  # Check the first record
+
+
+#as.character(RestReviews_Corp)
+```
+
+
+#######################################################################################################
+### Creating the Bag of Words model
+#######################################################################################################
+
+```{r}
+dtm = DocumentTermMatrix(RestReviews_Corp)  # dtm is a martix , but to make sure we have the right matrix
+                                      # We should use as.matrix() when we want to tranform it to DF
+dtm = removeSparseTerms(dtm, 0.999) # Filter non frequent words
+
+dtm
+```
+
+
+
+#######################################################################################################
+### Creating a data frame
+#######################################################################################################
+
+```{r}
+RestReviews_DF = as.data.frame(as.matrix(dtm)) # Transforming a matrix to Data frame
+
+names(RestReviews_DF)
+
+
+```
+
+```{r}
+RestReviews_DF$Liked = RestReviews_Org$Liked  # Add dependent variable
+
+names(RestReviews_DF)
+```
+
+
+
+#######################################################################################################
+### Encoding the target feature as factor
+#######################################################################################################
+
+```{r}
+RestReviews_DF$Liked = factor(RestReviews_DF$Liked, levels = c(0, 1))
+```
+
+
+#######################################################################################################
+### Splitting the RestReviews_DF into the Training set and Test set
+#######################################################################################################
+
+# install.packages('caTools')
+```{r}
+library(caTools)
+set.seed(123)
+
+split = sample.split(RestReviews_DF$Liked, SplitRatio = 0.8)
+training_set = subset(RestReviews_DF, split == TRUE)
+test_set = subset(RestReviews_DF, split == FALSE)
+```
+
+
+
+
+#######################################################################################################
+### Fitting Random Forest Classification to the Training set
+#######################################################################################################
+
+```{r}
+
+#install.packages('randomForest')
+library(randomForest)
+classifier = randomForest(x = training_set[-692],  # X is the training set without dependent variable
+                          y = training_set$Liked,
+                          ntree = 100)
+```
+
+
+#######################################################################################################
+### Predicting the Test set results
+#######################################################################################################
+
+```{r}
+y_pred = predict(classifier, newdata = test_set[-692])
+
+y_pred
+```
+
+
+#######################################################################################################
+### Making the Confusion Matrix
+#######################################################################################################
+
+```{r}
+cm = table(test_set[, 692], y_pred) 
+
+cm
+```
+
+   
+
+#######################################################################################################
+### Calculate the accuracy // the proportion of the correct answer we have for the test set
+#######################################################################################################
+
+```{r}
+sum(diag(cm))/sum(cm) # sum of the diagonal 
+```
+
+
+
+
+### Feature Scaling
+
+```{r}
+training_set[-692] = scale(training_set[-692]) # to make a cool graph to plot the prediction region and
+# prediction boundary
+test_set[-692] = scale(test_set[-692])
+```
+
+### Fitting Superlearner to the Training set
+
+```{r}
+library(ggplot2)
+library(stringr)
+library(tidyr)
+library(dplyr)
+library(gridExtra)
+library(caret)
+library(pROC)
+library(psych)
+library(moments)
+library(SuperLearner)
+```
+```{r}
+str(training_set$Liked)
+```
+
+
+### Predicting the Test set results
+
+```{r}
+set.seed(150)
+
+x = training_set[-692]
+y = training_set$Liked
+
+all_model = SuperLearner(y ,  # Use randomForest to build our classifier
+                            x , 
+                            family=binomial(),
+                            SL.library=list("SL.rpart" ,
+                                            "SL.logreg",
+                                            "SL.bayesglm",
+                                            "SL.randomForest",
+                                            "SL.svm",
+                                            "SL.ksvm",
+                                            "SL.gbm",
+                                            "SL.ranger",
+                                            "SL.rpartPrune",
+                                            "SL.xgboost",
+                                            "SL.ipredbagg",
+                                            "SL.extraTrees")) 
+
+all_model
+```
+
+
+```{r}
+
+pred_all_model <- predict.SuperLearner(all_model,newdata=test_set[-692],onlySL=TRUE)
+head(pred_all_model$pred)
+head(pred_all_model$library.predict)
+conv.pred_all_model <- ifelse(pred_all_model$pred>=0.5,1,0)
+head(conv.pred_all_model)
+
+
+```
+
+```{r}
+#conv.pred_all_model
+
+ytest<-as.numeric(unlist(test_set$Liked))
+
+cm_all_model <- confusionMatrix(
+      factor(conv.pred_all_model,levels=0:1),
+      factor(ytest,levels=0:1)
+)
+
+
+cm_all_model
+```
+
+
+
+
+
